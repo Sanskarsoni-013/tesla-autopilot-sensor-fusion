@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tesla Autopilot Sensor Intelligence & BEV Fusion Visualizer</title>
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-panel: rgba(16, 24, 40, 0.85);
+      --border-color: rgba(0, 229, 255, 0.2);
+      --accent-cyan: #00e5ff;
+      --accent-blue: #2979ff;
+      --accent-green: #00e676;
+      --accent-amber: #ffab00;
+      --accent-red: #ff1744;
+      --text-main: #f0f4f8;
+      --text-muted: #8b9bb4;
+      --font-mono: 'SF Mono', 'Segoe UI Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+      --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background: linear-gradient(180deg, rgba(20, 30, 50, 0.95) 0%, rgba(10, 14, 23, 0.9) 100%);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      fill: #e82127;
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+
+    .brand-sub {
+      font-size: 0.75rem;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    .controls-bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-family: var(--font-ui);
+      font-weight: 500;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover {
+      background: rgba(0, 229, 255, 0.15);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+    }
+
+    .btn.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-cyan);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(41, 121, 255, 0.5);
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, #111a2e 0%, #080c14 100%);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .telemetry-sidebar {
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px;
+      gap: 16px;
+      backdrop-filter: blur(12px);
+    }
+
+    .card {
+      background: rgba(12, 18, 30, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .card-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--accent-cyan);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .threat-banner {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-align: center;
+      letter-spacing: 0.8px;
+      transition: all 0.3s ease;
+    }
+
+    .threat-normal {
+      background: rgba(0, 230, 118, 0.15);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+    }
+
+    .threat-warning {
+      background: rgba(255, 171, 0, 0.2);
+      border: 1px solid var(--accent-amber);
+      color: var(--accent-amber);
+      animation: pulse-warn 1s infinite;
+    }
+
+    .threat-critical {
+      background: rgba(255, 23, 68, 0.3);
+      border: 1px solid var(--accent-red);
+      color: var(--accent-red);
+      animation: pulse-crit 0.5s infinite;
+    }
+
+    @keyframes pulse-warn {
+      0%, 100% { box-shadow: 0 0 4px var(--accent-amber); }
+      50% { box-shadow: 0 0 16px var(--accent-amber); }
+    }
+
+    @keyframes pulse-crit {
+      0%, 100% { box-shadow: 0 0 8px var(--accent-red); }
+      50% { box-shadow: 0 0 24px var(--accent-red); }
+    }
+
+    .gauge-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .gauge-item {
+      background: rgba(0, 0, 0, 0.25);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      text-align: center;
+    }
+
+    .gauge-val {
+      font-family: var(--font-mono);
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .gauge-lbl {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .progress-bar-wrap {
+      margin-top: 8px;
+    }
+
+    .progress-bar-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      margin-bottom: 4px;
+      color: var(--text-muted);
+    }
+
+    .progress-bar-track {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.1s ease;
+    }
+
+    .can-stream {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #a0c4ff;
+      line-height: 1.5;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 8px;
+      border-radius: 6px;
+      max-height: 110px;
+      overflow-y: hidden;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polygon points="12 8 8 12 12 16 16 12 12 8"></polygon>
+        <line x1="12" y1="2" x2="12" y2="4"></line>
+        <line x1="12" y1="20" x2="12" y2="22"></line>
+        <line x1="20" y1="12" x2="22" y2="12"></line>
+        <line x1="2" y1="12" x2="4" y2="12"></line>
+      </svg>
+      <div>
+        <div class="brand-title">AUTOPILOT SENSOR INTELLIGENCE</div>
+        <div class="brand-sub">SURROUND VISION &amp; EKF FUSION COCKPIT</div>
+      </div>
+    </div>
+
+    <div class="controls-bar">
+      <button class="btn active" id="btn-cruise">Highway Cruise</button>
+      <button class="btn" id="btn-avoid">Cut-in Avoidance</button>
+      <button class="btn" id="btn-aeb">AEB Emergency Stop</button>
+      <span style="color: var(--border-color);">|</span>
+      <button class="btn" id="btn-play">Pause</button>
+      <button class="btn" id="btn-reset">Reset</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="canvas-container">
+      <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div class="telemetry-sidebar">
+      <div id="threat-indicator" class="threat-banner threat-normal">
+        AUTOPILOT ENGAGED - PATH CLEAR
+      </div>
+
+      <div class="card">
+        <div class="card-title">Vehicle Dynamics</div>
+        <div class="gauge-grid">
+          <div class="gauge-item">
+            <div class="gauge-val" id="val-speed">65.0</div>
+            <div class="gauge-lbl">Speed (MPH)</div>
+          </div>
+          <div class="gauge-item">
+            <div class="gauge-val" id="val-accel">+0.0</div>
+            <div class="gauge-lbl">Accel (m/s²)</div>
+          </div>
+          <div class="gauge-item">
+            <div class="gauge-val" id="val-steer">0.0°</div>
+            <div class="gauge-lbl">Steering Wheel</div>
+          </div>
+          <div class="gauge-item">
+            <div class="gauge-val" id="val-ttc">INF</div>
+            <div class="gauge-lbl">TTC Time (s)</div>
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-head">
+            <span>Motor Throttle</span>
+            <span id="lbl-throttle">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="bar-throttle" class="progress-bar-fill" style="width: 0%; background: var(--accent-cyan);"></div>
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-head">
+            <span>Friction Brake</span>
+            <span id="lbl-brake">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="bar-brake" class="progress-bar-fill" style="width: 0%; background: var(--accent-red);"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Surround Perception Suite</div>
+        <div class="legend-row">
+          <div class="legend-dot" style="background: rgba(0, 229, 255, 0.7);"></div>
+          <span>8-Camera 360° Vision Cones (HW3/4)</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-dot" style="background: rgba(41, 121, 255, 0.8);"></div>
+          <span>77 GHz Forward Doppler Radar (250m)</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-dot" style="background: rgba(0, 230, 118, 0.8);"></div>
+          <span>12x Ultrasonic Proximity Sonar (0-8m)</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-dot" style="background: #e82127;"></div>
+          <span>Dynamic Surrounding Target Vehicles</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-dot" style="background: #ffff00;"></div>
+          <span>Quintic Jerk-Minimizing Planned Path</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Tesla CAN Bus Traffic (50Hz)</div>
+        <div class="can-stream" id="can-logs">
+          0x048 STEER: 00 00 64 80 01 00 00 E2<br>
+          0x116 DRIVE: C8 00 00 40 00 00 00 A4<br>
+          0x118 SPEED: 4C 12 4C 12 4C 12 4C 12<br>
+          0x399 STATE: 02 01 00 00 00 00 00 89
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let currentScenario = 'highway_cruise';
+    let isRunning = true;
+    let simTime = 0;
+
+    // Ego Vehicle State
+    const ego = {
+      x: 0,
+      y: 0,
+      yaw: 0,
+      speed_mps: 29.06, // 65 mph
+      target_speed: 29.06,
+      accel: 0,
+      steer_deg: 0,
+      throttle: 35,
+      brake: 0,
+      ttc: 999
+    };
+
+    // Obstacles
+    let targets = [];
+
+    function initScenario(sc) {
+      currentScenario = sc;
+      simTime = 0;
+      ego.speed_mps = 28.0;
+      ego.accel = 0;
+      ego.steer_deg = 0;
+      ego.throttle = 30;
+      ego.brake = 0;
+
+      if (sc === 'highway_cruise') {
+        targets = [
+          { x: 48, y: 0, vx: 26.5, vy: 0, w: 2.0, l: 4.8, color: '#f39c12' },
+          { x: 22, y: 3.7, vx: 29.5, vy: 0, w: 2.0, l: 4.6, color: '#9b59b6' },
+          { x: 35, y: -3.7, vx: 22.0, vy: 0, w: 2.4, l: 7.2, color: '#3498db' }
+        ];
+      } else if (sc === 'obstacle_avoidance') {
+        targets = [
+          { x: 38, y: 3.2, vx: 18.0, vy: -0.7, w: 2.0, l: 4.5, color: '#e74c3c' },
+          { x: 18, y: -3.7, vx: 25.0, vy: 0, w: 2.0, l: 4.5, color: '#3498db' }
+        ];
+      } else if (sc === 'emergency_aeb_stop') {
+        targets = [
+          { x: 42, y: 0, vx: 0, vy: 0, w: 2.2, l: 4.8, color: '#e74c3c' }
+        ];
+      }
+    }
+
+    initScenario('highway_cruise');
+
+    // Controls
+    document.getElementById('btn-cruise').onclick = () => {
+      setActiveBtn('btn-cruise');
+      initScenario('highway_cruise');
+    };
+    document.getElementById('btn-avoid').onclick = () => {
+      setActiveBtn('btn-avoid');
+      initScenario('obstacle_avoidance');
+    };
+    document.getElementById('btn-aeb').onclick = () => {
+      setActiveBtn('btn-aeb');
+      initScenario('emergency_aeb_stop');
+    };
+    document.getElementById('btn-play').onclick = (e) => {
+      isRunning = !isRunning;
+      e.target.innerText = isRunning ? 'Pause' : 'Resume';
+    };
+    document.getElementById('btn-reset').onclick = () => {
+      initScenario(currentScenario);
+    };
+
+    function setActiveBtn(id) {
+      ['btn-cruise', 'btn-avoid', 'btn-aeb'].forEach(b => {
+        document.getElementById(b).classList.remove('active');
+      });
+      document.getElementById(id).classList.add('active');
+    }
+
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function updateSimulation(dt) {
+      if (!isRunning) return;
+      simTime += dt;
+
+      // Update target vehicles
+      targets.forEach(tgt => {
+        tgt.x += (tgt.vx - ego.speed_mps) * dt;
+        tgt.y += tgt.vy * dt;
+
+        // In avoidance scenario, stabilize lateral motion once inside lane
+        if (currentScenario === 'obstacle_avoidance' && tgt.y <= 0.1 && tgt.vy < 0) {
+          tgt.vy = 0;
+          tgt.y = 0;
+        }
+      });
+
+      // Lead vehicle tracking & Risk evaluation
+      let minTTC = 999;
+      let closestDist = 999;
+      let leadTarget = null;
+
+      targets.forEach(tgt => {
+        if (tgt.x > 0 && Math.abs(tgt.y) < 1.9) {
+          const closingSpeed = ego.speed_mps - tgt.vx;
+          if (closingSpeed > 0) {
+            const ttc = tgt.x / closingSpeed;
+            if (ttc < minTTC) {
+              minTTC = ttc;
+              closestDist = tgt.x;
+              leadTarget = tgt;
+            }
+          }
+        }
+      });
+
+      ego.ttc = minTTC;
+
+      // AEB & ACC logic
+      const threatBanner = document.getElementById('threat-indicator');
+
+      if (minTTC < 1.4 || (closestDist < 8.0 && ego.speed_mps > 1.0)) {
+        // Automatic Emergency Braking
+        ego.accel = -8.5;
+        ego.brake = 100;
+        ego.throttle = 0;
+        threatBanner.className = 'threat-banner threat-critical';
+        threatBanner.innerText = '[!!!] AEB ACTIVATED - MAXIMUM EMERGENCY DECELERATION [!!!]';
+      } else if (minTTC < 2.8) {
+        // Forward Collision Warning
+        ego.accel = -4.5;
+        ego.brake = 65;
+        ego.throttle = 0;
+        threatBanner.className = 'threat-banner threat-warning';
+        threatBanner.innerText = '[ ! ] FORWARD COLLISION WARNING (FCW) - BRAKE NOW';
+      } else {
+        // Normal adaptive cruise
+        threatBanner.className = 'threat-banner threat-normal';
+        threatBanner.innerText = 'AUTOPILOT ENGAGED - ALL 8 CAMERAS CLEAR';
+
+        if (leadTarget && leadTarget.x < 40) {
+          const targetSpeed = Math.min(ego.target_speed, leadTarget.vx);
+          ego.accel = (targetSpeed - ego.speed_mps) * 0.8;
+        } else {
+          ego.accel = (ego.target_speed - ego.speed_mps) * 0.6;
+        }
+
+        ego.accel = Math.max(-3.5, Math.min(2.5, ego.accel));
+        if (ego.accel >= 0) {
+          ego.throttle = Math.min(100, ego.accel * 35);
+          ego.brake = 0;
+        } else {
+          ego.throttle = 0;
+          ego.brake = Math.min(100, Math.abs(ego.accel) * 20);
+        }
+      }
+
+      ego.speed_mps = Math.max(0, ego.speed_mps + ego.accel * dt);
+
+      // Steering dynamics (minor realistic drift / lane keeping)
+      ego.steer_deg = Math.sin(simTime * 0.8) * 1.2;
+
+      // Update UI Telemetry
+      const mph = ego.speed_mps * 2.23694;
+      document.getElementById('val-speed').innerText = mph.toFixed(1);
+      document.getElementById('val-accel').innerText = (ego.accel >= 0 ? '+' : '') + ego.accel.toFixed(1);
+      document.getElementById('val-steer').innerText = (ego.steer_deg >= 0 ? '+' : '') + ego.steer_deg.toFixed(1) + '°';
+      document.getElementById('val-ttc').innerText = minTTC < 99 ? minTTC.toFixed(2) + 's' : 'INF';
+
+      document.getElementById('bar-throttle').style.width = ego.throttle + '%';
+      document.getElementById('lbl-throttle').innerText = Math.round(ego.throttle) + '%';
+      document.getElementById('bar-brake').style.width = ego.brake + '%';
+      document.getElementById('lbl-brake').innerText = Math.round(ego.brake) + '%';
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width * 0.35;
+      const centerY = canvas.height * 0.5;
+      const scale = 7.0; // pixels per meter
+
+      // 1. Draw Highway Lanes
+      const roadLength = canvas.width;
+      const laneWidth = 3.7 * scale;
+
+      // Road asphalt
+      ctx.fillStyle = '#0f1724';
+      ctx.fillRect(0, centerY - laneWidth * 1.8, roadLength, laneWidth * 3.6);
+
+      // Lane dividers
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([16, 16]);
+
+      // Dashed lane lines
+      ctx.beginPath();
+      ctx.moveTo(0, centerY - laneWidth * 0.5);
+      ctx.lineTo(roadLength, centerY - laneWidth * 0.5);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, centerY + laneWidth * 0.5);
+      ctx.lineTo(roadLength, centerY + laneWidth * 0.5);
+      ctx.stroke();
+
+      // Road edges
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY - laneWidth * 1.5);
+      ctx.lineTo(roadLength, centerY - laneWidth * 1.5);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffb300'; // Double yellow or edge
+      ctx.beginPath();
+      ctx.moveTo(0, centerY + laneWidth * 1.5);
+      ctx.lineTo(roadLength, centerY + laneWidth * 1.5);
+      ctx.stroke();
+
+      // 2. Draw Camera Cones (Tesla 8-Camera Suite)
+      const cones = [
+        { angle: 0, fov: 120, range: 60, color: 'rgba(0, 229, 255, 0.08)' }, // Front wide
+        { angle: 0, fov: 50, range: 120, color: 'rgba(0, 229, 255, 0.12)' }, // Front main
+        { angle: 0, fov: 35, range: 180, color: 'rgba(0, 229, 255, 0.15)' }, // Front narrow
+        { angle: 65, fov: 90, range: 70, color: 'rgba(41, 121, 255, 0.08)' }, // Pillar Left
+        { angle: -65, fov: 90, range: 70, color: 'rgba(41, 121, 255, 0.08)' }, // Pillar Right
+        { angle: 145, fov: 90, range: 80, color: 'rgba(41, 121, 255, 0.08)' }, // Repeater Left
+        { angle: -145, fov: 90, range: 80, color: 'rgba(41, 121, 255, 0.08)' }, // Repeater Right
+        { angle: 180, fov: 120, range: 50, color: 'rgba(0, 229, 255, 0.08)' }, // Rear
+      ];
+
+      cones.forEach(c => {
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        const startRad = (c.angle - c.fov / 2) * Math.PI / 180;
+        const endRad = (c.angle + c.fov / 2) * Math.PI / 180;
+        ctx.arc(centerX, centerY, c.range * scale * 0.45, startRad, endRad);
+        ctx.closePath();
+        ctx.fillStyle = c.color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+        ctx.stroke();
+      });
+
+      // 3. Draw Ultrasonic Proximity Rings around Ego
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 8 * scale * 0.4, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0, 230, 118, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // 4. Draw Planned Trajectory Path (Yellow/Cyan Quintic Curve)
+      ctx.beginPath();
+      ctx.moveTo(centerX + 2.5 * scale, centerY);
+      for (let x = 0; x <= 60; x += 2) {
+        const px = centerX + (2.5 + x) * scale;
+        const py = centerY - Math.sin(x * 0.08) * (ego.steer_deg * 2.0);
+        ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 5. Draw Dynamic Obstacle Vehicles
+      targets.forEach(tgt => {
+        const tx = centerX + tgt.x * scale;
+        const ty = centerY - tgt.y * scale;
+        const tw = tgt.l * scale;
+        const th = tgt.w * scale;
+
+        // Vehicle body shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(tx - tw/2 + 2, ty - th/2 + 2, tw, th);
+
+        // Vehicle body
+        ctx.fillStyle = tgt.color;
+        ctx.beginPath();
+        ctx.roundRect(tx - tw/2, ty - th/2, tw, th, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Windshield
+        ctx.fillStyle = '#111';
+        ctx.fillRect(tx + tw*0.1, ty - th*0.35, tw*0.2, th*0.7);
+
+        // Doppler Velocity Arrow
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx + (tgt.vx - ego.speed_mps) * 2.5, ty + tgt.vy * 5.0);
+        ctx.strokeStyle = '#ffeb3b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText(`${(tgt.vx * 2.23694).toFixed(0)}mph (${tgt.x.toFixed(0)}m)`, tx - 20, ty - th/2 - 6);
+      });
+
+      // 6. Draw Ego Tesla Model 3
+      const egoW = 4.7 * scale;
+      const egoH = 2.1 * scale;
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(centerX - egoW/2 + 3, centerY - egoH/2 + 3, egoW, egoH);
+
+      // Body (Red Multi-Coat)
+      ctx.fillStyle = '#e82127';
+      ctx.beginPath();
+      ctx.roundRect(centerX - egoW/2, centerY - egoH/2, egoW, egoH, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#ff5252';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Panoramic Glass Roof
+      ctx.fillStyle = '#0a101d';
+      ctx.beginPath();
+      ctx.roundRect(centerX - egoW*0.25, centerY - egoH*0.38, egoW*0.5, egoH*0.76, 4);
+      ctx.fill();
+
+      // Headlights
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(centerX + egoW/2 - 4, centerY - egoH/2 + 2, 4, 6);
+      ctx.fillRect(centerX + egoW/2 - 4, centerY + egoH/2 - 8, 4, 6);
+
+      // Tail lights
+      ctx.fillStyle = '#ff1744';
+      ctx.fillRect(centerX - egoW/2, centerY - egoH/2 + 2, 3, 6);
+      ctx.fillRect(centerX - egoW/2, centerY + egoH/2 - 8, 3, 6);
+    }
+
+    let lastTime = performance.now();
+    function loop(now) {
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+
+      updateSimulation(dt);
+      draw();
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
